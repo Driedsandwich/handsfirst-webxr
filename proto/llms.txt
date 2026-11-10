@@ -1,0 +1,98 @@
+# Hand puppet stage — local browser interface
+No AI backend, account, persistent storage, uploads, external art, fonts, or audio assets.
+Wait for window.puppetStage before calling the API.
+
+URLs:
+/ : real WebXR hands, placeholder stage, six-step introduction.
+/?emu=1&panel=1&stage=placeholder : IWER hands and touch-friendly emulation panel.
+?stage=placeholder : the only installed stage, also the default; unknown URLs fall back.
+?cues=<base64url UTF-8 JSON array of {"line":"..."}> : start an injected script.
+
+API:
+window.puppetStage.getState()
+  {step, mouth, tracked, stage, gloveProgress, index, count, line, cueLine}
+  step: raise-hand | glove-on | open-hand | next-line | script | improv
+  mouth: measured/smoothed 0..1; index: zero-based script index (-1 for empty).
+  line: currently displayed text; cueLine: underlying script line.
+window.puppetStage.loadCues([{line:"A button asks for a speaking part."}])
+  Starts script mode at index 0. Accepts 0..100 plain-text lines, 1..160 characters.
+  Invalid input throws TypeError without changing state. [] clears the board.
+window.puppetStage.nextCue()
+  Same progression as right-hand pinch/swipe. Ignored before next-line step.
+  After the last script line: optional friend, duet, improv, then Make a take.
+window.puppetStage.setStage("placeholder")
+  Preserves guide, hand and script. Unknown names throw RangeError unchanged.
+The original cue/stage calls return fresh state snapshots. No mouth setter is exposed.
+
+Hands-only example after clicking Enter VR:
+const r = window.__iwer.remote;
+await r.dispatch('run_sequence', {device:'hand-right', idleHand:'keep', body:'fixed', gaze:'fixed', steps:[{anchor:'wrist', position:{x:0.08,y:1.02,z:-0.43}, orientation:{fingers:'forward',palm:'down'}, poseId:'fist', duration:0.45}]});
+await r.dispatch('set_hand_pose', {device:'hand-right',poseId:'open',duration:0.25});
+// Wait until getState().step is next-line, then:
+await r.dispatch('select', {device:'hand-right',duration:0.2});
+await r.dispatch('run_sequence', {device:'hand-right',idleHand:'keep',body:'fixed',gaze:'fixed',steps:[{microgesture:'swipe-left'}]});
+// Wait at least 450ms between separate advances. No controllers are used.
+// window.__iwer is available only with emu=1. The panel uses the same commands.
+
+Evidence: app/harness/run.mjs -> app/harness-out/summary.json, screenshots, run.webm.
+Diagnostic window.__puppetLog timestamps are milliseconds from page navigation.
+
+Take recording / playback (v1, local page memory only):
+After script -> friend invitation (raise left to accept, right pinch/swipe to skip)
+-> four-line Teal/Amber duet -> improv -> pinch -> Make a take -> pinch starts.
+During recording right pinch/swipe advances/wraps the script. Both RAISED hands
+held in fists for 2 seconds stop and automatically replay. Lower hands during
+replay: puppets keep acting. At take-ready, swipe replays; pinch starts a new take.
+At most 3 takes are kept, newest first. Each is capped at 180s (auto-finish).
+
+window.puppetStage.exportTake(index=0)
+  Returns a fresh JSON-compatible Take object or null. JSON.stringify to serialize.
+window.puppetStage.loadTake(json)
+  Accepts a JSON string or object; validates before any mutation, returns
+  {frames,duration,count}. Throws for invalid data or while recording.
+window.puppetStage.playTake(index=0)
+  Starts playback at frame 0, returns {mode:'playing'}. Throws for no such take
+  or while recording. Also works without entering VR.
+window.puppetStage.listTakes()
+  [{index,duration,frames}], newest first; max length 3.
+window.puppetStage.getPlaybackTrace()
+  [{t,right,left}] at each applied 1/60s tick, measured from the rendered jaws.
+?take=<base64url UTF-8 JSON Take>
+  Load and automatically play. Invalid input is ignored/logged. Use loadTake for
+  long records (URL length limits vary). Nothing is uploaded or persisted.
+
+Take = {version:1, step:1/60, duration:N/60, frames:Frame[], events:Event[]}
+Frame = {t:i/60, right:Hand, left:Hand, line:string, index:number, count:number,
+         speaker:string, stage:'placeholder', scene:number}
+Hand = {tracked:boolean, visible:boolean, mouth:0..1, rest:0..1,
+        position:[x,y,z], rotation:[x,y,z,w], joints:{[XRJointName]:Pose}}
+Pose = {position:[x,y,z], rotation:[x,y,z,w]}
+All 25 valid WebXR joint poses on each side are captured; unavailable joints are
+absent. Positions are reference-space metres, +Y up/-Z forward; rotations are
+unit quaternions. Hand's outer pose is the smoothed puppet root. Times are seconds
+from take start; index and scene are zero-based. scene drives stage.transition.
+Event = {t,type:'cue',index,line} | {t,type:'scene',index,stage}
+Events are derived again from validated frames on import. Lines are plain text.
+Maximum 10800 frames, 64 MiB JSON string, supported stage only, finite values.
+Live sampling uses sample-and-hold of XR poses with 60 Hz smoothing. Playback
+bypasses live input and applies recorded joints/root/mouth/cue/scene snapshots
+at 1/60s. Hidden tabs pause; stalls over 1s pause the excess. No random mouth.
+
+getState additionally returns leftMouth, leftTracked, friend, speaker, takeMode
+(live|recording|playing|review), takeCount, recordingSeconds, playbackFrame,
+stopHoldSeconds, audio:{muted,volume,state,syllables:[rightCount,leftCount]}.
+Additional steps: friend | duet | make-take | recording | playback | take-ready.
+Take methods return the values documented above, not general state snapshots.
+
+Voice prototype (voice.ts): original additive Web Audio babble, no sound assets
+or speech service. A mouth crossing 0.3 produces one syllable; below 0.18 rearms.
+Opening controls pitch/amplitude. Teal=170 Hz base, Amber=245 Hz base.
+Enabled by default after user activation; ?mute=1 disables it. Left thumb forward
+raises volume by .1, backward lowers by .1 (0..1, initial .55). Hand gamepad
+buttons 7/8 or wrist-local thumb-travel fallback when absent. Controller input
+has no effect. Amber knit is #F2A541; same cream #F5E9D3 buttons as Teal.
+
+Evidence additionally includes take-example.json and replay-traces.json.
+summary.json includes each stage's pageMilliseconds, two-replay maxDifference,
+recording-to-applied-jaw maxAppliedError, and a nested-path dist loading check.
+No new npm dependencies; existing MIT packages and native Web APIs only.
