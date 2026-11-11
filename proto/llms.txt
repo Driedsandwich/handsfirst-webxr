@@ -3,9 +3,9 @@ No AI backend, account, persistent storage, uploads, external art, fonts, or aud
 Wait for window.puppetStage before calling the API.
 
 URLs:
-/ : real WebXR hands, placeholder stage, six-step introduction.
+/ : real WebXR hands, tabletop stage a, six-step introduction.
 /?emu=1&panel=1&stage=placeholder : IWER hands and touch-friendly emulation panel.
-?stage=placeholder : the only installed stage, also the default; unknown URLs fall back.
+?stage=a : default tabletop theatre. ?stage=placeholder retains the original. Unknown names in URLs fall back to a.
 ?cues=<base64url UTF-8 JSON array of {"line":"..."}> : start an injected script.
 
 API:
@@ -63,13 +63,13 @@ window.puppetStage.getPlaybackTrace()
 
 Take = {version:1, step:1/60, duration:N/60, frames:Frame[], events:Event[]}
 Frame = {t:i/60, right:Hand, left:Hand, line:string, index:number, count:number,
-         speaker:string, stage:'placeholder', scene:number}
+         speaker:string, stage:'a'|'placeholder', scene:number}
 Hand = {tracked:boolean, visible:boolean, mouth:0..1, rest:0..1,
         position:[x,y,z], rotation:[x,y,z,w], joints:{[XRJointName]:Pose}}
 Pose = {position:[x,y,z], rotation:[x,y,z,w]}
 All 25 valid WebXR joint poses on each side are captured; unavailable joints are
 absent. Positions are reference-space metres, +Y up/-Z forward; rotations are
-unit quaternions. Hand's outer pose is the smoothed puppet root. Times are seconds
+unit quaternions. Hand's outer pose is the anchored, smoothed puppet root in seated stage space. Times are seconds
 from take start; index and scene are zero-based. scene drives stage.transition.
 Event = {t,type:'cue',index,line} | {t,type:'scene',index,stage}
 Events are derived again from validated frames on import. Lines are plain text.
@@ -96,3 +96,21 @@ Evidence additionally includes take-example.json and replay-traces.json.
 summary.json includes each stage's pageMilliseconds, two-replay maxDifference,
 recording-to-applied-jaw maxAppliedError, and a nested-path dist loading check.
 No new npm dependencies; existing MIT packages and native Web APIs only.
+
+Tabletop scenery:
+Cue may also include scene: "night-town" | "seaside" | "moon" (default night-town).
+getState().scene returns the live cue's named scene. Frame.scene stores its numeric
+index (0/1/2); scene changes are independent of the gesture used to advance.
+The sign shows one fixed-size row; longer lines cycle through consecutive pages.
+The stage provides puppet anchors, movement bounds, scale and neutral facing.
+New XR sessions align the seated stage with the viewer's initial position/yaw.
+?mute=1 disables both babble and synthesized audience applause.
+
+Optional compact JSON (v2, native Web Compression API, no information loss):
+await window.puppetStage.exportCompactTake(index=0)
+  => {version:2, encoding:"gzip-base64", data:string} or null.
+await window.puppetStage.loadCompactTake(json)
+  Validates decompressed v1 data, preserving every joint and mouth value.
+  Returns {frames,duration,count}; call playTake() to replay.
+exportTake/loadTake retain their synchronous v1 format for compatibility.
+The decompressed size is limited to 64 MiB; no data leaves the page.
