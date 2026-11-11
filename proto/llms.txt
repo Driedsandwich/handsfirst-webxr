@@ -13,7 +13,8 @@ window.puppetStage.getState()
   {step, mouth, tracked, stage, gloveProgress, index, count, line, cueLine}
   step: raise-hand | glove-on | open-hand | next-line | script | improv
   mouth: measured/smoothed 0..1; index: zero-based script index (-1 for empty).
-  line: currently displayed text; cueLine: underlying script line.
+  line: full logical guide/cue text (retains the legacy "Line N:" prefix); cueLine: underlying script line.
+  The sign strips that prefix and shows N/count separately; line is not a paginated fragment.
 window.puppetStage.loadCues([{line:"A button asks for a speaking part."}])
   Starts script mode at index 0. Accepts 0..100 plain-text lines, 1..160 characters.
   Invalid input throws TypeError without changing state. [] clears the board.
@@ -99,11 +100,12 @@ No new npm dependencies; existing MIT packages and native Web APIs only.
 
 Tabletop scenery:
 Cue may also include scene: "night-town" | "seaside" | "moon" (default night-town).
-getState().scene returns the live cue's named scene. Frame.scene stores its numeric
+getState().scene returns the visible scenery name, including night-town during the initial guide and the dominant visible panel during a slide. Frame.scene stores its numeric
 index (0/1/2); scene changes are independent of the gesture used to advance.
-The sign shows one fixed-size row; longer lines cycle through consecutive pages.
+The sign first fits one row using 80–100% font size. Longer lines use two balanced pages at punctuation or word boundaries, with the current N/count in the corner.
 The stage provides puppet anchors, movement bounds, scale and neutral facing.
-New XR sessions align the seated stage with the viewer's initial position/yaw.
+New XR sessions wait for the first valid viewer pose, then align the stage to its position/yaw. A reference-space reset waits for the next valid pose, realigns the stage and reacquires both hand neutrals. Pitch does not tilt the tabletop. The eye-level stage anchor is 0.60m forward.
+?emu=1 narrows the display field of view; real headset optics are untouched.
 ?mute=1 disables both babble and synthesized audience applause.
 
 Optional compact JSON (v2, native Web Compression API, no information loss):
