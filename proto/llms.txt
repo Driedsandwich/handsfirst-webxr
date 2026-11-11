@@ -1,4 +1,4 @@
-# Hand puppet stage — local browser interface
+# Hands Take Stage — local browser interface
 No AI backend, account, persistent storage, uploads, external art, fonts, or audio assets.
 Wait for window.puppetStage before calling the API.
 
@@ -6,6 +6,7 @@ URLs:
 / : real WebXR hands, tabletop stage a, six-step introduction.
 /?emu=1&panel=1&stage=placeholder : IWER hands and touch-friendly emulation panel.
 ?stage=a : default tabletop theatre. ?stage=placeholder retains the original. Unknown names in URLs fall back to a.
+?fps=1 : optional board fps counter; getState().fps gives current (last 1s), average and min (last 10s), sampleSeconds and source (window/xr). min is null until a full second is measured. Absent without fps=1.
 ?cues=<base64url UTF-8 JSON array of {"line":"..."}> : start an injected script.
 
 API:
@@ -116,3 +117,40 @@ await window.puppetStage.loadCompactTake(json)
   Returns {frames,duration,count}; call playTake() to replay.
 exportTake/loadTake retain their synchronous v1 format for compatibility.
 The decompressed size is limited to 64 MiB; no data leaves the page.
+
+Sharing a show (v3, URL fragment only):
+await window.puppetStage.exportShareLink(index=0)
+  => absolute URL with #t=3.<base64url-gzip>. Rejects missing takes, takes over
+  30 seconds or payloads over 64 KiB. Removes all query parameters (including
+  emu, capture, cues and legacy take). Does not upload, navigate or copy by itself.
+After a hands-only recording stops, the XR sign says
+"Saved. Exit VR to share this take." The 2D "Share this take" button copies the
+link after leaving VR; copying is optional. Clipboard-denied browsers show a
+selectable link. No share button or controller action is added inside VR.
+
+Opening #t= shows "A show for you" and the 2D "Watch the show" button. It plays
+in the normal browser canvas after that click, with the existing synthesized
+babble (not recorded voice). Enter VR also starts/resumes the show, then returns
+to "Raise your right hand to answer" and the ordinary hand introduction.
+getState().sharePhase is none | ready | playing | ended.
+Malformed, truncated, unsupported-version and oversized fragments fall back
+silently to the ordinary page. No fragment is sent in an HTTP request.
+
+The v3 allowlist contains only stage-local root position (1mm), quaternion
+smallest-three components (signed 16-bit plus omitted component index), mouth
+and puppet droop (8-bit), visibility, dialogue/scene/speaker transitions and
+an optional injected script. No joints, viewer/camera pose, microphone audio,
+wall-clock timestamps, identifiers or query parameters are included.
+30 Hz base samples use integer deltas, zigzag varints, native CompressionStream
+(gzip) and URL-safe base64. Sparse quantized midpoint curve corrections preserve
+sharp hand changes that linear 30 Hz interpolation cannot reproduce within the
+error budget. Discrete cue/visibility transitions retain their original 60 Hz
+frame index; playback reconstructs the existing 60 Hz timeline. Maximum 1800
+playback frames, 64 KiB token and 512 KiB decompressed data, validated atomically.
+Custom cue text is included as text, just as shown on the sign.
+
+getPlaybackTrace additionally records applied stage-local rightPosition /
+leftPosition, rightRotation / leftRotation, line, speaker and scene for numeric
+replay comparisons. No camera pose is added to the trace or the shared format.
+Verification: npm run test:shares; SHARE=1 node harness/share-run.mjs.
+Sharing capture: node harness/share-capture.mjs (see harness/SHARING.md).
